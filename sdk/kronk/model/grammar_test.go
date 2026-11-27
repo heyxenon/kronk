@@ -212,6 +212,20 @@ func TestFromJSONSchema_EnumGrammarInitializes(t *testing.T) {
 	})
 }
 
+func TestToolNameGrammarInitializes(t *testing.T) {
+	parser, ok := selectDefaultParser(Fingerprint{Architecture: "qwen3"}).(ToolNameConstrainer)
+	if !ok {
+		t.Fatal("qwen parser: does not implement ToolNameConstrainer")
+	}
+	triggers, grammar := parser.ToolNameGrammar([]string{"get_weather", "get_time"})
+
+	gs, err := newLazyGrammarSampler(grammarTestVocab(t), grammar, triggers)
+	if err != nil {
+		t.Fatalf("newLazyGrammarSampler: %v", err)
+	}
+	gs.Free()
+}
+
 func grammarTestVocab(t *testing.T) llama.Vocab {
 	t.Helper()
 	pattern := filepath.Join(defaults.BaseDir(""), "models", "*", "*", grammarTestModelFile)

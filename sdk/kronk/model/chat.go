@@ -979,6 +979,15 @@ func functionTools(d D) []D {
 	return functions
 }
 
+// toolNames returns the names of the function tools d offers.
+func toolNames(d D) []string {
+	var names []string
+	for _, tool := range functionTools(d) {
+		names = append(names, tool["function"].(D)["name"].(string))
+	}
+	return names
+}
+
 // applyToolChoice updates the cloned inference document so tool selection is
 // reflected by both prompt rendering and output parsing. Validation must run
 // first.

@@ -151,6 +151,16 @@ type ToolCallSchemaParser interface {
 	ToolCallWithSchema(ctx context.Context, log applog.Logger, buf string, tools []D) []ResponseToolCall
 }
 
+// ToolNameConstrainer is optionally implemented by parsers whose tool calls
+// name the tool right after a fixed opener. ToolNameGrammar returns regex
+// patterns that find an opener in the output and a GBNF grammar, starting at
+// the opener, that takes only the given names, or no grammar when the parser
+// has none. The engine applies it lazily, as llama.cpp's server does: the
+// answer stays free, and a call can only name a tool the request offers.
+type ToolNameConstrainer interface {
+	ToolNameGrammar(names []string) (triggers []string, grammar string)
+}
+
 // ParamsAdjuster is an optional interface a Parser may implement to coerce
 // request Params into values its model lineage's chat template will accept.
 // It is invoked at the end of Model.adjustParams, after global defaults have

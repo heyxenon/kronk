@@ -503,7 +503,17 @@ func newGrammarSampler(vocab llama.Vocab, grammar string) (*grammarSampler, erro
 		return nil, nil
 	}
 
-	sampler := llama.SamplerInitGrammar(vocab, grammar, "root")
+	return grammarSamplerOf(vocab, llama.SamplerInitGrammar(vocab, grammar, "root"))
+}
+
+// newLazyGrammarSampler creates a grammar sampler that constrains nothing
+// until one of the trigger patterns matches the output, and the output from
+// the match on afterwards.
+func newLazyGrammarSampler(vocab llama.Vocab, grammar string, triggers []string) (*grammarSampler, error) {
+	return grammarSamplerOf(vocab, llama.SamplerInitGrammarLazyPatterns(vocab, grammar, "root", triggers, nil))
+}
+
+func grammarSamplerOf(vocab llama.Vocab, sampler llama.Sampler) (*grammarSampler, error) {
 	if sampler == 0 {
 		return nil, fmt.Errorf("%w: invalid grammar", ErrInvalidRequest)
 	}

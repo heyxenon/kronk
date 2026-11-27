@@ -97,6 +97,11 @@ type ToolCallSchemaParser interface {
 	ToolCallWithSchema(ctx context.Context, log applog.Logger, buf string, tools []D) []ResponseToolCall
 }
 
+// ToolNameConstrainer optionally limits the tool name a call opens with.
+type ToolNameConstrainer interface {
+	ToolNameGrammar(names []string) (triggers []string, grammar string)
+}
+
 // ParamsAdjuster optionally coerces request parameters for a lineage's template.
 type ParamsAdjuster interface {
 	AdjustParams(p Params) Params

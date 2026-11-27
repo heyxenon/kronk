@@ -147,6 +147,18 @@ func (e *batchEngine) startSlot(s *slot, job *chatJob, buf []byte) {
 		}
 	}
 
+	// Otherwise a call may only name a tool the request offers.
+	if c, ok := e.model.parser.(ToolNameConstrainer); ok && s.grammarSampler == nil {
+		if names := toolNames(job.d); len(names) > 0 {
+			if triggers, grammar := c.ToolNameGrammar(names); grammar != "" {
+				if s.grammarSampler, err = newLazyGrammarSampler(e.model.vocab, grammar, triggers); err != nil {
+					e.finishSlot(s, fmt.Errorf("start-slot: tool names: %w", err))
+					return
+				}
+			}
+		}
+	}
+
 	// Create a fresh per-request mtmd context for any request that touches
 	// the mtmd pipeline (media-bearing requests, or IMC media cache builds
 	// for media-using sessions). Per-request lifetime keeps any internal

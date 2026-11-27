@@ -12,6 +12,7 @@ package qwen
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/ardanlabs/kronk/sdk/kronk/applog"
@@ -85,6 +86,20 @@ func (Parser) ToolCallWithSchema(ctx context.Context, log applog.Logger, buf str
 	normalizeXMLArguments(toolCalls, tools)
 
 	return toolCalls
+}
+
+// ToolNameGrammar limits the name in either call format to names: after
+// <function= in direct XML, and as "name" in a <tool_call> JSON envelope.
+func (Parser) ToolNameGrammar(names []string) ([]string, string) {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = strconv.Quote(n)
+	}
+	return []string{`<function=`, `<tool_call>\s*(\{)`},
+		`root ::= "<function=" name ">" rest | "{" ws "\"name\"" ws ":" ws "\"" name "\"" rest` + "\n" +
+			"name ::= " + strings.Join(quoted, " | ") + "\n" +
+			`ws ::= [ \t\n]*` + "\n" +
+			`rest ::= [^\x00]*` + "\n"
 }
 
 // containsQwenMarkers reports whether a chat template carries distinctive

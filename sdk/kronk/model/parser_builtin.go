@@ -90,6 +90,13 @@ func (p *builtinParser) ToolCallWithSchema(ctx context.Context, log applog.Logge
 	return p.ToolCall(ctx, log, buf)
 }
 
+func (p *builtinParser) ToolNameGrammar(names []string) ([]string, string) {
+	if parser, ok := p.parser.(parsers.ToolNameConstrainer); ok {
+		return parser.ToolNameGrammar(names)
+	}
+	return nil, ""
+}
+
 func (p *builtinParser) AdjustParams(params Params) Params {
 	if parser, ok := p.parser.(parsers.ParamsAdjuster); ok {
 		adjusted := parser.AdjustParams(parsers.Params{ReasoningEffort: params.ReasoningEffort})

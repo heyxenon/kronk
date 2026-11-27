@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -591,5 +592,33 @@ func TestParser_Reset(t *testing.T) {
 	got, _ := c.Classify("hi")
 	if got.Channel != parsers.ChannelAnswer || got.Content != "hi" {
 		t.Errorf("after Reset got %+v", got)
+	}
+}
+
+func TestToolNameGrammar(t *testing.T) {
+	triggers, grammar := Parser{}.ToolNameGrammar([]string{"get_weather", "get_time"})
+	for out, want := range map[string]string{
+		"Sure.<tool_call>\n<function=get_weather>": "<function=get_weather>",
+		"<tool_call>\n{\"name\": \"get_weather\"}": "{\"name\": \"get_weather\"}",
+		"It is sunny today.":                       "",
+	} {
+		got := ""
+		for _, trigger := range triggers {
+			m := regexp.MustCompile(trigger).FindStringSubmatchIndex(out)
+			if m != nil {
+				start := m[0]
+				if len(m) > 2 && m[2] >= 0 {
+					start = m[2]
+				}
+				got = out[start:]
+				break
+			}
+		}
+		if got != want {
+			t.Errorf("%q: grammar starts at %q, want %q", out, got, want)
+		}
+	}
+	if !strings.Contains(grammar, `name ::= "get_weather" | "get_time"`) {
+		t.Errorf("grammar doesn't limit the names:\n%s", grammar)
 	}
 }
