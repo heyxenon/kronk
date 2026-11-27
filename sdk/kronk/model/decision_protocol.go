@@ -101,7 +101,7 @@ func (m *Model) Decision(ctx context.Context, req DecisionRequest) (DecisionResp
 		if !ok || !media.SupportsImages() {
 			return DecisionResponse{}, fmt.Errorf("%w: decision protocol %q does not support images", ErrDecisionRequest, m.modelInfo.decisionProtocol)
 		}
-		if m.mtmdMetaCtx == 0 || !m.mtmdCapabilities.Vision {
+		if !m.mtmdCapabilities.Vision {
 			return DecisionResponse{}, fmt.Errorf("%w: decision images require a compatible vision projector", ErrDecisionRequest)
 		}
 	}
@@ -110,7 +110,7 @@ func (m *Model) Decision(ctx context.Context, req DecisionRequest) (DecisionResp
 		if !ok || !media.SupportsAudio() {
 			return DecisionResponse{}, fmt.Errorf("%w: decision protocol %q does not support audio", ErrDecisionRequest, m.modelInfo.decisionProtocol)
 		}
-		if m.mtmdMetaCtx == 0 || !m.mtmdCapabilities.Audio {
+		if !m.mtmdCapabilities.Audio {
 			return DecisionResponse{}, fmt.Errorf("%w: decision audio requires a compatible audio projector", ErrDecisionRequest)
 		}
 	}

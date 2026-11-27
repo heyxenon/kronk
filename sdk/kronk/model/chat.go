@@ -648,10 +648,6 @@ func (m *Model) prepareMediaContext(ctx context.Context, d D) (D, error) {
 
 	// Capabilities are captured at load time. Per-request processing contexts
 	// are created and freed by each slot.
-	if m.mtmdMetaCtx == 0 {
-		return nil, fmt.Errorf("prepare-media-context: model has no mtmd context loaded")
-	}
-
 	switch mediaType {
 	case MediaTypeVision:
 		if !m.mtmdCapabilities.Vision {

@@ -376,6 +376,14 @@ func NewModel(ctx context.Context, cfg Config) (_ *Model, err error) {
 		return &m, nil
 	}
 
+	// Each media request opens its own projector context, so the one that
+	// read the capabilities is freed: the projector then holds memory only
+	// while a request uses it.
+	if m.mtmdMetaCtx != 0 {
+		mtmd.Free(m.mtmdMetaCtx)
+		m.mtmdMetaCtx = 0
+	}
+
 	// All model/bundle capabilities are now available for runtime selection.
 	// Keep the existing classification and initialization behavior unchanged.
 	pooled := modelInfo.IsEmbedModel || modelInfo.IsRerankModel
@@ -560,8 +568,8 @@ func NewModel(ctx context.Context, cfg Config) (_ *Model, err error) {
 }
 
 // loadCapabilities discovers native bundle capabilities before runtime-specific
-// configuration and initialization. The metadata projector lives with the Model;
-// per-request contexts remain owned by their respective runtime.
+// configuration and initialization. Speech models keep the metadata projector
+// for decoding; other runtimes free it after load and open per-request contexts.
 func (m *Model) loadCapabilities(ctx context.Context) error {
 	mi := m.modelInfo
 	if !(mi.IsEmbedModel || mi.IsRerankModel) && m.projFile != "" {
