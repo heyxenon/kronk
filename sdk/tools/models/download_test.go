@@ -528,6 +528,34 @@ func TestDownloadSplits_IndexStale_FileDeleted(t *testing.T) {
 	}
 }
 
+func TestDownloadSplits_ProjectionCutOffTwice(t *testing.T) {
+	g := &fakeGetter{
+		contents: map[string][]byte{
+			"/Qwen/Qwen3-VL-GGUF/resolve/main/Qwen3-VL-Q8_0.gguf": []byte("model-body-bytes\n"),
+			"/Qwen/Qwen3-VL-GGUF/resolve/main/mmproj-F16.gguf":    []byte("proj-body-bytes\n"),
+		},
+		failOnURLSubstr: map[string]error{"/resolve/main/mmproj-F16.gguf": context.DeadlineExceeded},
+	}
+	withFakeGetter(t, g)
+
+	m := newTestModels(t)
+
+	// The first pull indexes the model; the second finds it installed
+	// without its projection and must not report that as downloaded.
+	for i := range 2 {
+		mp, err := m.downloadSplits(
+			context.Background(), testLog,
+			[]string{"https://huggingface.co/Qwen/Qwen3-VL-GGUF/resolve/main/Qwen3-VL-Q8_0.gguf"},
+			"https://huggingface.co/Qwen/Qwen3-VL-GGUF/resolve/main/mmproj-F16.gguf",
+			"",
+			nil,
+		)
+		if err == nil {
+			t.Fatalf("pull %d: got %+v and no error with the projection cut off", i+1, mp)
+		}
+	}
+}
+
 func TestDownload_MissingCompanion_ReDownloads(t *testing.T) {
 	// Fail on any real HTTP connection, even in best-effort enrichment paths
 	// whose errors would otherwise be logged and swallowed.

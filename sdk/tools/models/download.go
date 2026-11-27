@@ -442,8 +442,9 @@ func (m *Models) downloadSplits(ctx context.Context, log applog.Logger, modelURL
 			// (and any projection) on disk still matches its sha pointer. A
 			// partial split would otherwise be reported as "downloaded" and
 			// the next pull would short-circuit on the index instead of
-			// retrying the truncated shard.
-			if mp, err := m.FullPath(modelID); err == nil && len(mp.ModelFiles) > 0 {
+			// retrying the truncated shard. A copy without a companion this
+			// pull fetches is not installed either.
+			if mp, err := m.FullPath(modelID); err == nil && len(mp.ModelFiles) > 0 && (pLoc == nil || mp.ProjFile != "") && (dLoc == nil || mp.MTPFile != "") {
 				if vErr := verifyAllSizes(mp); vErr == nil {
 					log(ctx, "download-model: using installed version of model files")
 					return mp, nil
