@@ -342,3 +342,13 @@ func TestParseJSON_RejectsMalformedOutputAtomically(t *testing.T) {
 		})
 	}
 }
+
+func TestParseQwenXML_SkipsStrayParameterClose(t *testing.T) {
+	calls := parseQwenXML("<function=get_time>\n</parameter>\n</function>")
+	if len(calls) != 1 || calls[0].Status != 0 {
+		t.Fatalf("tool calls: got %+v, want one parsed call", calls)
+	}
+	if calls[0].Function.Name != "get_time" || len(calls[0].Function.Arguments) != 0 {
+		t.Errorf("tool call: got %q %v, want get_time with no arguments", calls[0].Function.Name, calls[0].Function.Arguments)
+	}
+}

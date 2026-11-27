@@ -64,6 +64,13 @@ func parseQwenXML(content string) []parsers.ResponseToolCall {
 				break
 			}
 
+			// Small models close a parameter they never opened, mostly in a
+			// call that takes none. It holds no value, so it is skipped.
+			if strings.HasPrefix(content, "</parameter>") {
+				content = content[len("</parameter>"):]
+				continue
+			}
+
 			if !strings.HasPrefix(content, "<parameter=") {
 				return []parsers.ResponseToolCall{failedXMLToolCall(raw,
 					fmt.Errorf("parse qwen XML: unexpected content inside function %q", name))}
