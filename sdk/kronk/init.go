@@ -24,8 +24,9 @@ var (
 )
 
 type initOptions struct {
-	libPath  string
-	logLevel LogLevel
+	libPath     string
+	logLevel    LogLevel
+	logCallback uintptr
 }
 
 // InitOption represents options for configuring Init.
@@ -42,6 +43,14 @@ func WithLibPath(libPath string) InitOption {
 func WithLogLevel(logLevel LogLevel) InitOption {
 	return func(o *initOptions) {
 		o.logLevel = logLevel
+	}
+}
+
+// WithLogCallback has llama.cpp and mtmd log to cb, a C ggml_log_callback,
+// from the first message on, in place of the log level.
+func WithLogCallback(cb uintptr) InitOption {
+	return func(o *initOptions) {
+		o.logCallback = cb
 	}
 }
 
@@ -137,8 +146,11 @@ func Init(opts ...InitOption) error {
 		o.logLevel = LogSilent
 	}
 
-	switch o.logLevel {
-	case LogSilent:
+	switch {
+	case o.logCallback != 0:
+		llama.LogSet(o.logCallback)
+		mtmd.LogSet(o.logCallback)
+	case o.logLevel == LogSilent:
 		llama.LogSet(llama.LogSilent())
 		mtmd.LogSet(llama.LogSilent())
 	default:

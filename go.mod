@@ -14,6 +14,7 @@ require (
 	github.com/arl/statsviz v0.8.2
 	github.com/charmbracelet/x/ansi v0.11.10
 	github.com/dgraph-io/badger/v4 v4.9.6
+	github.com/ebitengine/purego v0.11.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/go-getter v1.8.10
@@ -94,7 +95,6 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.2 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
-	github.com/ebitengine/purego v0.11.3 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.40.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
