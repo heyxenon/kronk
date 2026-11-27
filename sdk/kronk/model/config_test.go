@@ -1341,3 +1341,12 @@ func TestValidateConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestProjThreads(t *testing.T) {
+	if got := NewConfig(WithNThreads(4)).ProjThreads(); got != 4 {
+		t.Errorf("unset: got %d, want NThreads 4", got)
+	}
+	if got := NewConfig(WithNThreads(4), WithProjThreads(7)).ProjThreads(); got != 7 {
+		t.Errorf("set: got %d, want 7", got)
+	}
+}
