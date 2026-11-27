@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -245,6 +246,60 @@ func grammarTestVocab(t *testing.T) llama.Vocab {
 	})
 
 	return llama.ModelGetVocab(mdl)
+}
+
+// TestSampleWithGrammarResamplesRefusedTokens checks that a token the grammar
+// refuses is never kept: greedy sampling wants " Paris", the grammar allows
+// only "yes" or "no".
+func TestSampleWithGrammarResamplesRefusedTokens(t *testing.T) {
+	modelPath := installedTestModel(t, "KRONK_TEST_MODEL", grammarTestModelFile)
+	if err := llama.Load(libs.Path(os.Getenv("KRONK_TEST_LIB_PATH"))); err != nil {
+		t.Fatalf("load llama library: %v", err)
+	}
+	if err := llama.Init(); err != nil {
+		t.Fatalf("initialize llama: %v", err)
+	}
+	llama.LogSet(llama.LogSilent())
+
+	mdl, err := llama.ModelLoadFromFile(modelPath, llama.ModelDefaultParams())
+	if err != nil {
+		t.Fatalf("load model: %v", err)
+	}
+	t.Cleanup(func() { llama.ModelFree(mdl) })
+	lctx, err := llama.InitFromModel(mdl, llama.ContextDefaultParams())
+	if err != nil {
+		t.Fatalf("create context: %v", err)
+	}
+	t.Cleanup(func() { llama.Free(lctx) })
+	vocab := llama.ModelGetVocab(mdl)
+
+	gs, err := newGrammarSampler(vocab, `root ::= "yes" | "no"`)
+	if err != nil {
+		t.Fatalf("newGrammarSampler: %v", err)
+	}
+	t.Cleanup(gs.Free)
+	chain := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
+	llama.SamplerChainAdd(chain, llama.SamplerInitGreedy())
+	t.Cleanup(func() { llama.SamplerFree(chain) })
+
+	var out strings.Builder
+	batch := llama.BatchGetOne(llama.Tokenize(vocab, "The capital of France is", true, false))
+	for range 8 {
+		if _, err := llama.Decode(lctx, batch); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		token := gs.SampleWithGrammar(lctx, chain, -1)
+		if llama.VocabIsEOG(vocab, token) {
+			break
+		}
+		gs.Accept(token)
+		buf := make([]byte, 64)
+		out.Write(buf[:llama.TokenToPiece(vocab, token, buf, 0, false)])
+		batch = llama.BatchGetOne([]llama.Token{token})
+	}
+	if got := out.String(); got != "yes" && got != "no" {
+		t.Fatalf("grammar output: got %q, want yes or no", got)
+	}
 }
 
 func TestFromJSONSchema_Array(t *testing.T) {

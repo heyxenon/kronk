@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
@@ -489,6 +491,7 @@ type grammarSampler struct {
 	sampler   llama.Sampler
 	nVocab    int
 	tokenData []llama.TokenData // Pre-allocated buffer to avoid allocations during sampling.
+	single    llama.TokenData   // The sampled token, checked against the grammar alone.
 }
 
 // NewGrammarSampler creates a grammar sampler that will be managed separately
@@ -521,15 +524,18 @@ func newGrammarSampler(vocab llama.Vocab, grammar string) (*grammarSampler, erro
 }
 
 // SampleWithGrammar samples a token using the main sampler chain with grammar
-// constraints applied first. This is the key integration point that:
-// 1. Gets logits from the context
-// 2. Builds a token_data_array
-// 3. Applies grammar constraints (sets invalid tokens to -inf logits)
-// 4. Copies modified logits back to context
-// 5. Uses normal SamplerSample which reads from context
+// constraints, as llama.cpp's common sampler does: it samples without the
+// grammar first and keeps the token when the grammar allows it, since
+// checking one token is far cheaper than constraining the whole vocabulary.
+// Only when the grammar refuses it does it:
+// 1. Get logits from the context
+// 2. Build a token_data_array
+// 3. Apply grammar constraints (sets invalid tokens to -inf logits)
+// 4. Copy modified logits back to context
+// 5. Use normal SamplerSample which reads from context
 //
-// SamplerSample accepts the token on the main sampler. The caller must still
-// call Accept on the separate grammar sampler after selecting the token.
+// The token is accepted on the main sampler either way. The caller must
+// still call Accept on the separate grammar sampler after selecting the token.
 func (gs *grammarSampler) SampleWithGrammar(ctx llama.Context, chainSampler llama.Sampler, idx int32) llama.Token {
 	if gs == nil || gs.sampler == 0 {
 		return llama.SamplerSample(chainSampler, ctx, idx)
@@ -541,23 +547,20 @@ func (gs *grammarSampler) SampleWithGrammar(ctx llama.Context, chainSampler llam
 		return llama.SamplerSample(chainSampler, ctx, idx)
 	}
 
-	// Build token_data_array from logits.
-	for i := range gs.nVocab {
-		gs.tokenData[i] = llama.TokenData{
-			Id:    llama.Token(i),
-			Logit: logits[i],
-			P:     0, // Will be computed by samplers
+	curP := gs.candidates(logits)
+	llama.SamplerApply(chainSampler, &curP)
+	if curP.Selected >= 0 {
+		token := unsafe.Slice(curP.Data, curP.Size)[curP.Selected].Id
+		gs.single = llama.TokenData{Id: token, Logit: 1}
+		llama.SamplerApply(gs.sampler, &llama.TokenDataArray{Data: &gs.single, Size: 1, Selected: -1})
+		if !math.IsInf(float64(gs.single.Logit), -1) {
+			llama.SamplerAccept(chainSampler, token)
+			return token
 		}
 	}
 
-	curP := llama.TokenDataArray{
-		Data:     &gs.tokenData[0],
-		Size:     uint64(gs.nVocab),
-		Selected: -1,
-		Sorted:   0, // false
-	}
-
 	// Apply grammar constraints - this sets invalid tokens to -inf logits.
+	curP = gs.candidates(logits)
 	llama.SamplerApply(gs.sampler, &curP)
 
 	// Copy modified logits back to context's logits array.
@@ -568,6 +571,24 @@ func (gs *grammarSampler) SampleWithGrammar(ctx llama.Context, chainSampler llam
 
 	// Now use normal sampling - it will read the modified logits from context.
 	return llama.SamplerSample(chainSampler, ctx, idx)
+}
+
+// candidates builds a token_data_array of every token from logits.
+func (gs *grammarSampler) candidates(logits []float32) llama.TokenDataArray {
+	for i := range gs.nVocab {
+		gs.tokenData[i] = llama.TokenData{
+			Id:    llama.Token(i),
+			Logit: logits[i],
+			P:     0, // Will be computed by samplers
+		}
+	}
+
+	return llama.TokenDataArray{
+		Data:     &gs.tokenData[0],
+		Size:     uint64(gs.nVocab),
+		Selected: -1,
+		Sorted:   0, // false
+	}
 }
 
 // Accept advances the grammar state machine after a token is selected.
