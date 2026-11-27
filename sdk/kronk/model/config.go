@@ -296,8 +296,9 @@ type AdapterConfig struct {
 // NThreads is the number of threads to use for generation. When unset or set
 // to 0, it defaults to the greater of 4 and runtime.GOMAXPROCS(0).
 //
-// NThreadsBatch is the number of threads to use for batch processing. When
-// unset or set to 0, it defaults to the greater of 4 and runtime.GOMAXPROCS(0).
+// NThreadsBatch is the number of threads to use for batch processing, which
+// includes encoding images and audio with the projector. When unset or set to
+// 0, it defaults to the greater of 4 and runtime.GOMAXPROCS(0).
 //
 // NUMA controls the NUMA (Non-Uniform Memory Access) strategy. This matters
 // most when expert tensors are on CPU and the system has multiple NUMA nodes.
