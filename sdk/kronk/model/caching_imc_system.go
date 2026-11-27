@@ -30,6 +30,11 @@ func (m *Model) imcSystemTokens(ctx context.Context, stableD D) []llama.Token {
 	systemD["messages"] = messages[:systemMessages]
 	prompt, media, err := m.createPrompt(ctx, systemD)
 	if err != nil {
+		// Templates such as Qwen3.5's refuse a chat with no user message. The
+		// system prefix is then what two chats with different user text share.
+		prompt, media, err = m.imcSharedPrefix(ctx, systemD, messages[:systemMessages])
+	}
+	if err != nil {
 		m.log(ctx, "imc", "status", "system-cache-skipped", "reason", "render-failed", "err", err)
 		return nil
 	}
@@ -37,6 +42,25 @@ func (m *Model) imcSystemTokens(ctx context.Context, stableD D) []llama.Token {
 		return nil
 	}
 	return llama.Tokenize(m.vocab, prompt, m.addBOSToken, true)
+}
+
+// imcSharedPrefix renders system with two different user messages and
+// returns the text both renderings start with.
+func (m *Model) imcSharedPrefix(ctx context.Context, d D, system []D) (string, [][]byte, error) {
+	var prompts [2]string
+	for i, text := range []string{"a", "b"} {
+		d["messages"] = append(slices.Clone(system), D{"role": "user", "content": text})
+		prompt, media, err := m.createPrompt(ctx, d)
+		if err != nil || len(media) > 0 {
+			return "", media, err
+		}
+		prompts[i] = prompt
+	}
+	n := 0
+	for n < len(prompts[0]) && n < len(prompts[1]) && prompts[0][n] == prompts[1][n] {
+		n++
+	}
+	return prompts[0][:n], nil, nil
 }
 
 // imcFindSystemCache reserves an immutable preload for restoration. The caller

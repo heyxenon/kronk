@@ -158,3 +158,24 @@ func TestReleaseIMCReservationIfHeldReleasesSystemCache(t *testing.T) {
 		t.Errorf("release left working/System reservations = %t/%d, want false/0", session.reserved, systemCache.activeRestores)
 	}
 }
+
+func TestIMCSharedPrefixForTemplateThatNeedsAUserMessage(t *testing.T) {
+	m := newFingerprintTestModel(`{%- set ns = namespace(user=false) -%}
+{%- for message in messages -%}{%- if message.role == "user" -%}{%- set ns.user = true -%}{%- endif -%}{%- endfor -%}
+{%- if not ns.user -%}{{ raise_exception("No user query found in messages.") }}{%- endif -%}
+{%- for message in messages -%}<|{{ message.role }}|>{{ message.content }}
+{% endfor -%}`)
+	system := []D{{"role": "system", "content": "rules"}}
+
+	if _, _, err := m.createPrompt(context.Background(), D{"messages": system}); err == nil {
+		t.Fatal("system-only render: got no error, want the template to refuse it")
+	}
+
+	prefix, media, err := m.imcSharedPrefix(context.Background(), D{}, system)
+	if err != nil || len(media) != 0 {
+		t.Fatalf("imcSharedPrefix: got media %d, err %v", len(media), err)
+	}
+	if want := "<|system|>rules\n<|user|>"; prefix != want {
+		t.Errorf("imcSharedPrefix: got %q, want %q", prefix, want)
+	}
+}
