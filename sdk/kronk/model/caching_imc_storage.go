@@ -172,7 +172,7 @@ func (m *Model) imcNewStoredIdentity(s *imcSession) {
 func (m *Model) imcSaveCompleted(ctx context.Context, job *chatJob, request json.RawMessage, assistant string) {
 	s := job.imcSession
 	if !m.imcStorageEnabled() || !job.hasIMCReservation() || s.storageConflict || len(request) == 0 ||
-		s.usageVersion != job.imcUsageVersion || s.cache.totalTokensCached == 0 || s.kvState.Len() == 0 {
+		s.usageVersion != job.imcUsageVersion || s.cache.totalTokensCached == 0 || s.cache.partial || s.kvState.Len() == 0 {
 		return
 	}
 	timeout, maxBytes := m.cfg.Storage.limits()

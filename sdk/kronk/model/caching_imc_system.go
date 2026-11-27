@@ -101,10 +101,20 @@ func (m *Model) imcReleaseSystemCache(cache *imcSystemCache) {
 	}
 
 	m.cacheMu.Lock()
+	cache.releaseLocked()
+	m.cacheMu.Unlock()
+}
+
+// releaseLocked ends one restore of cache, and frees the session it was
+// forked from, if any. The caller holds m.cacheMu.
+func (cache *imcSystemCache) releaseLocked() {
 	if cache.activeRestores > 0 {
 		cache.activeRestores--
 	}
-	m.cacheMu.Unlock()
+	if cache.from != nil {
+		cache.from.reserved = false
+		cache.from = nil
+	}
 }
 
 func (m *Model) imcReserveSystemCache(tokens []llama.Token) *imcSystemCache {

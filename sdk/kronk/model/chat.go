@@ -450,6 +450,10 @@ func (m *Model) prepareCacheAndPrompt(ctx context.Context, d D, object string, r
 		if err != nil {
 			return "", nil, cache, fmt.Errorf("chat-streaming: render complete stable prompt: %w", err)
 		}
+		upto := cacheUpto(d)
+		if at := strings.LastIndex(stablePrompt, upto); upto != "" && at >= 0 && object == ObjectChatText {
+			stablePrompt = stablePrompt[:at+len(upto)]
+		}
 
 		systemTokens := m.imcSystemTokens(ctx, stableD)
 		if object == ObjectChatMedia {
@@ -458,7 +462,7 @@ func (m *Model) prepareCacheAndPrompt(ctx context.Context, d D, object string, r
 			actualTokens := llama.Tokenize(m.vocab, actualPrompt, m.addBOSToken, true)
 			stableTokens := llama.Tokenize(m.vocab, stablePrompt, m.addBOSToken, true)
 
-			cache = m.processIMCTokenPlan(ctx, d, actualTokens, stableTokens, systemTokens, requestStart)
+			cache = m.processIMCTokenPlan(ctx, d, actualTokens, stableTokens, systemTokens, upto, requestStart)
 		}
 		if cache.err != nil {
 			return "", nil, cache, cache.err
@@ -466,12 +470,18 @@ func (m *Model) prepareCacheAndPrompt(ctx context.Context, d D, object string, r
 		if cache.imcTokenPlan {
 			return actualPrompt, nil, cache, nil
 		}
+		if prefillOnly(d) {
+			return "", nil, cache, fmt.Errorf("%w: prefill_only needs a prompt the cache can hold", ErrInvalidRequest)
+		}
 		m.log(ctx, "imc", "status", "token-plan-fallback", "cache_mode", "token-v2", "reason", "render-not-prefix-compatible")
 		cache.modifiedD = d
 		return actualPrompt, actualMedia, cache, nil
 	}
 
 	cache.modifiedD = d
+	if prefillOnly(d) {
+		return "", nil, cache, fmt.Errorf("%w: prefill_only needs the incremental cache", ErrInvalidRequest)
+	}
 
 	prompt, media, err := m.createPrompt(ctx, d)
 	if err != nil {
@@ -479,6 +489,21 @@ func (m *Model) prepareCacheAndPrompt(ctx context.Context, d D, object string, r
 	}
 
 	return prompt, media, cache, nil
+}
+
+// cacheUpto is a request's cache_upto: the cache holds a text prompt only
+// through the last place this text appears in it, e.g. the words of a
+// message still being written, and the rest is read for this request alone.
+func cacheUpto(d D) string {
+	upto, _ := d["cache_upto"].(string)
+	return upto
+}
+
+// prefillOnly reports whether a request only fills the cache: it stops once
+// the prompt is cached, with an empty reply.
+func prefillOnly(d D) bool {
+	only, _ := d["prefill_only"].(bool)
+	return only
 }
 
 // releaseIMCReservationIfHeld releases an IMC session reservation when the

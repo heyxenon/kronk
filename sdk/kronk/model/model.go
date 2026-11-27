@@ -106,6 +106,7 @@ type imcPrefix struct {
 	promptPlan            promptPlan
 	samplerPromptTokens   []llama.Token
 	cachedRenderInputHash string // Guards exact hits against render-only input changes.
+	partial               bool   // Ends in a message still being written (cache_upto).
 }
 
 // imcSystemCache is one immutable, model-specific system-prompt preload image.
@@ -122,7 +123,8 @@ type imcSystemCache struct {
 	lastUsed         time.Time
 	activeRestores   int
 	restoreCount     uint64
-	building         bool // Exclusive rebuild reservation; planners must not restore this entry while true.
+	building         bool        // Exclusive rebuild reservation; planners must not restore this entry while true.
+	from             *imcSession // A session forked through this entry; reserved until the restore is released.
 }
 
 func (s *imcPrefix) logicalPosition() int {

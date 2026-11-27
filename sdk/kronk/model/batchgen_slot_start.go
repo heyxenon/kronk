@@ -865,6 +865,11 @@ func (e *batchEngine) finishStartSlot(s *slot, job *chatJob, cacheIdx llama.Pos,
 		}
 	}
 
+	if prefillOnly(job.d) {
+		e.finishSlot(s, nil)
+		return
+	}
+
 	// Branch based on request type: media vs text-only.
 	// Use len(job.media) to distinguish: after an IMC media cache build the
 	// suffix is text-only (images are already in KV cache), so route to

@@ -216,6 +216,7 @@ func (e *batchEngine) advanceIMCPreparationSlot(s *slot, selectorStart, selected
 			job.imcExpectedRenderHash)
 		e.model.cacheMu.Lock()
 		job.imcSession.cache.promptPlan = job.imcPromptPlan
+		job.imcSession.cache.partial = cacheUpto(job.d) != ""
 		e.model.cacheMu.Unlock()
 		sessionWasCommitted = true
 	}

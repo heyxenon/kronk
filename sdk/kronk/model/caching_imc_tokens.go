@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -12,7 +13,12 @@ import (
 // processIMCTokenPlan selects a text session using cached tokens as the
 // authority. Only complete cached sequences are reusable; divergence never
 // trims an existing session and instead rebuilds an empty/LRU session.
-func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, system []llama.Token, requestStart time.Time) cacheResult {
+//
+// A request with upto caches a message still being written. It extends a
+// session that holds such a message, but forks one that holds only finished
+// turns into another session, so that when the message's words change it
+// starts again from the finished turns instead of from the system prompt.
+func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, system []llama.Token, upto string, requestStart time.Time) cacheResult {
 	result := cacheResult{modifiedD: d}
 	if len(actual) == 0 || !tokensHavePrefix(actual, stable) {
 		return result
@@ -29,7 +35,7 @@ func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, sy
 		m.log(ctx, "imc", "status", "system-cache-skipped", "reason", "render-not-prefix-compatible")
 		system = nil
 	}
-	renderFingerprint, fingerprintOK := m.imcRenderFingerprint(d, dMessages(d))
+	renderFingerprint, fingerprintOK := m.imcRenderFingerprint(d, withLastContent(dMessages(d), upto))
 	result.imcTokenPlan = true
 	result.imcSamplerPromptTokens = slices.Clone(actual)
 	result.imcTailTokens = tail
@@ -67,11 +73,26 @@ func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, sy
 		best = m.imcFindStoredSession(ctx, target, nil, matches)
 	}
 
+	var fork *imcSession
+	if best != nil && upto != "" && !best.cache.partial {
+		best.reserved = true
+		if m.imcRebuildSession() != nil {
+			fork, best = best, nil
+		} else {
+			best.reserved = false
+		}
+	}
+
 	// System is an immutable preload tier. Search it only when no Current
 	// working cache can serve the request, then reserve a separate destination
-	// session for the new Current state.
+	// session for the new Current state. A fork restores its finished turns
+	// the same way.
 	var systemCache *imcSystemCache
-	if best == nil {
+	switch {
+	case fork != nil:
+		systemCache = &imcSystemCache{cachedTokens: fork.cache.cachedTokens, kvState: fork.kvState,
+			draftKVState: fork.draftKVState, pendingH: fork.pendingH, from: fork}
+	case best == nil:
 		systemCache = m.imcFindSystemCache(system)
 	}
 
@@ -100,7 +121,7 @@ func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, sy
 		selected = m.imcRebuildSession()
 		if selected == nil {
 			if systemCache != nil {
-				systemCache.activeRestores--
+				systemCache.releaseLocked()
 			}
 			m.cacheMu.Unlock()
 			result.err = fmt.Errorf("imc: server busy processing other requests, try again shortly")
@@ -116,7 +137,7 @@ func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, sy
 		if resetErr != nil {
 			selected.reserved = false
 			if systemCache != nil {
-				systemCache.activeRestores--
+				systemCache.releaseLocked()
 			}
 			m.cacheMu.Unlock()
 			result.err = fmt.Errorf("imc: reset session store: %w", resetErr)
@@ -128,6 +149,9 @@ func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, sy
 			clearSeq = false
 			matchKind = "append"
 			matchReason = "system-cache-prefix"
+			if fork != nil {
+				matchReason = "fork-of-finished-turns"
+			}
 		}
 	}
 
@@ -165,6 +189,19 @@ func (m *Model) processIMCTokenPlan(ctx context.Context, d D, actual, stable, sy
 		"request_age", fmtDur(time.Since(requestStart)))
 
 	return result
+}
+
+// withLastContent is messages with the last one's content replaced by text,
+// unless text is "".
+func withLastContent(messages []D, text string) []D {
+	if text == "" || len(messages) == 0 {
+		return messages
+	}
+	messages = slices.Clone(messages)
+	last := maps.Clone(messages[len(messages)-1])
+	last["content"] = text
+	messages[len(messages)-1] = last
+	return messages
 }
 
 func imcTextPrefixMatches(session *imcSession, target []llama.Token, fingerprint string, fingerprintOK bool) bool {
