@@ -1852,6 +1852,14 @@ func resolveBackendDevices(names []string) ([]llama.GGMLBackendDevice, error) {
 		if dev == 0 {
 			return nil, fmt.Errorf("unknown device: %s", name)
 		}
+
+		// llama.cpp always keeps the CPU for what isn't offloaded. A CPU
+		// named here becomes an offload device of its own, and llama.cpp
+		// splits the layers between it and the GPUs by free memory.
+		if llama.GGMLBackendDevType(dev) == llama.GGMLBackendDeviceTypeCPU {
+			continue
+		}
+
 		devices = append(devices, dev)
 	}
 	devices = append(devices, 0) // NULL terminator
