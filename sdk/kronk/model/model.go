@@ -1190,6 +1190,10 @@ func buildDraftSampler(vocab llama.Vocab, suppressTokens []llama.Token, params P
 }
 
 func loadModelFromFiles(ctx context.Context, log applog.Logger, modelFiles []string, params llama.ModelParams) (llama.Model, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, fmt.Errorf("model-load-from-file: %w", err)
+	}
+
 	baseModelFile := path.Base(modelFiles[0])
 	loadMode := loadModeName(params.LoadMode)
 
@@ -1201,6 +1205,17 @@ func loadModelFromFiles(ctx context.Context, log applog.Logger, modelFiles []str
 	)
 	defer span.End()
 
+	// A cancelled ctx stops the load at llama.cpp's next progress report.
+	if ctx.Done() != nil {
+		params.SetProgressCallback(func(float32, uintptr) uint8 {
+			if ctx.Err() != nil {
+				return 0
+			}
+			return 1
+		})
+		defer params.SetProgressCallback(nil)
+	}
+
 	var err error
 	var mdl llama.Model
 
@@ -1208,13 +1223,13 @@ func loadModelFromFiles(ctx context.Context, log applog.Logger, modelFiles []str
 	case 1:
 		mdl, err = llama.ModelLoadFromFile(modelFiles[0], params)
 		if err != nil {
-			return 0, fmt.Errorf("model-load-from-file: unable to load model: %w", err)
+			return 0, fmt.Errorf("model-load-from-file: unable to load model: %w", errors.Join(ctx.Err(), err))
 		}
 
 	default:
 		mdl, err = llama.ModelLoadFromSplits(modelFiles, params)
 		if err != nil {
-			return 0, fmt.Errorf("model-load-from-splits: unable to load model from split: %w", err)
+			return 0, fmt.Errorf("model-load-from-splits: unable to load model from split: %w", errors.Join(ctx.Err(), err))
 		}
 	}
 

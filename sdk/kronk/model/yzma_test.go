@@ -1,11 +1,15 @@
 package model
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"testing"
 
+	"github.com/ardanlabs/kronk/sdk/applog"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/hybridgroup/yzma/pkg/llama"
@@ -42,6 +46,54 @@ func TestYzmaTokenizeNUL(t *testing.T) {
 	if prefix := llama.Tokenize(vocab, "left", false, true); slices.Equal(tokens, prefix) {
 		t.Fatalf("tokenize embedded NUL: got prefix tokens %v; bytes after NUL had no effect", tokens)
 	}
+}
+
+func TestLoadModelFromFilesCancelledBeforeLoad(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := loadModelFromFiles(ctx, applog.DiscardLogger, []string{"model.gguf"}, llama.ModelParams{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("load with a cancelled context: got %v, want %v", err, context.Canceled)
+	}
+}
+
+func TestLoadModelFromFilesCancelledDuringLoad(t *testing.T) {
+	libPath := libs.Path(os.Getenv("KRONK_TEST_LIB_PATH"))
+	modelPath := installedTestModel(t, "KRONK_TEST_MODEL", "Qwen3-0.6B-Q8_0.gguf")
+
+	if err := llama.Load(libPath); err != nil {
+		t.Fatalf("load llama.cpp: %v", err)
+	}
+	if err := llama.Init(); err != nil {
+		t.Fatalf("initialize llama.cpp: %v", err)
+	}
+
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &cancelledAfterFirstCheck{Context: base}
+
+	mdl, err := loadModelFromFiles(ctx, applog.DiscardLogger, []string{modelPath}, llama.ModelDefaultParams())
+	if err == nil {
+		llama.ModelFree(mdl)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("load cancelled after it started: got %v, want %v", err, context.Canceled)
+	}
+}
+
+// cancelledAfterFirstCheck is live for its first Err call and cancelled from
+// then on, so a load starts and must stop at llama.cpp's next progress report.
+type cancelledAfterFirstCheck struct {
+	context.Context
+	checks atomic.Int32
+}
+
+func (ctx *cancelledAfterFirstCheck) Err() error {
+	if ctx.checks.Add(1) > 1 {
+		return context.Canceled
+	}
+	return nil
 }
 
 // installedTestModel resolves an installed fixture unless an explicit path is
